@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pomodoro</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style type="text/tailwindcss">
+  @theme {
+    --font-heading: Georgia, "Times New Roman", serif;
+    --font-body: "Inter", "Helvetica Neue", "Arial", sans-serif;
+  }
+  @layer base {
+    html, body { background: #000; color: #fff; }
+    body {
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    ::selection { background: rgba(255,255,255,0.2); }
+  }
+  @layer utilities {
+    .font-heading { font-family: var(--font-heading); font-style: italic; }
+    .scrollbar-hide::-webkit-scrollbar { display: none; }
+    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+    .liquid-glass {
+      background: rgba(255, 255, 255, 0.01);
+      background-blend-mode: luminosity;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+      position: relative;
+      overflow: hidden;
+      border-radius: 9999px;
+    }
+    .liquid-glass::before {
+      content: "";
+      position: absolute; inset: 0;
+      border-radius: inherit; padding: 1.4px;
+      background: linear-gradient(180deg,
+        rgba(255,255,255,0.45) 0%,
+        rgba(255,255,255,0.15) 20%,
+        rgba(255,255,255,0) 40%,
+        rgba(255,255,255,0) 60%,
+        rgba(255,255,255,0.15) 80%,
+        rgba(255,255,255,0.45) 100%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+    .liquid-glass-strong {
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(50px);
+      -webkit-backdrop-filter: blur(50px);
+      box-shadow: 4px 4px 4px rgba(0, 0, 0, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+      position: relative;
+      overflow: hidden;
+      border-radius: 9999px;
+    }
+    .liquid-glass-strong::before {
+      content: "";
+      position: absolute; inset: 0;
+      border-radius: inherit; padding: 1.4px;
+      background: linear-gradient(180deg,
+        rgba(255,255,255,0.5) 0%,
+        rgba(255,255,255,0.2) 20%,
+        rgba(255,255,255,0) 40%,
+        rgba(255,255,255,0) 60%,
+        rgba(255,255,255,0.2) 80%,
+        rgba(255,255,255,0.5) 100%);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    @keyframes blurIn {
+      0%   { filter: blur(10px); opacity: 0; transform: translateY(20px); }
+      100% { filter: blur(0);    opacity: 1; transform: translateY(0);     }
+    }
+    .anim-blur-in { animation: blurIn 0.8s ease-out both; }
+
+    /* ---- Cursor-reactive lighting ---- */
+    /* Global soft spotlight that tracks the cursor */
+    .cursor-spotlight {
+      position: fixed;
+      top: 0; left: 0;
+      width: 520px; height: 520px;
+      margin: -260px 0 0 -260px;
+      pointer-events: none;
+      z-index: 40;
+      border-radius: 9999px;
+      background: radial-gradient(
+        circle at center,
+        rgba(190, 220, 255, 0.18) 0%,
+        rgba(255, 190, 230, 0.12) 35%,
+        rgba(255, 210, 170, 0.06) 60%,
+        rgba(0,0,0,0) 72%
+      );
+      mix-blend-mode: screen;
+      transform: translate3d(var(--cx, -1000px), var(--cy, -1000px), 0);
+      transition: opacity .4s ease;
+      filter: blur(8px);
+    }
+    /* Tiny crisp cursor dot */
+    .cursor-dot {
+      position: fixed;
+      top: 0; left: 0;
+      width: 6px; height: 6px;
+      margin: -3px 0 0 -3px;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.9);
+      box-shadow: 0 0 12px rgba(180, 210, 255, 0.9), 0 0 30px rgba(255, 180, 220, 0.4);
+      pointer-events: none;
+      z-index: 50;
+      transform: translate3d(var(--cx, -1000px), var(--cy, -1000px), 0);
+      transition: transform .08s linear;
+      mix-blend-mode: screen;
+    }
+    @media (hover: none) {
+      .cursor-spotlight, .cursor-dot { display: none; }
+    }
+
+    /* Card sheen — radial highlight that follows mouse within the element */
+    .aura {
+      position: relative;
+      isolation: isolate;
+    }
+    .aura::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      background: radial-gradient(
+        260px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(255, 255, 255, 0.12),
+        rgba(255, 255, 255, 0.04) 35%,
+        rgba(255, 255, 255, 0) 65%
+      );
+      opacity: 0;
+      transition: opacity .35s ease;
+      z-index: 0;
+      mix-blend-mode: screen;
+    }
+    .aura:hover::after { opacity: 1; }
+
+    /* Pearl button gets a brighter, tighter sheen */
+    .pearl-btn.aura::after {
+      background: radial-gradient(
+        140px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(255, 255, 255, 0.55),
+        rgba(255, 255, 255, 0.15) 40%,
+        rgba(255, 255, 255, 0) 70%
+      );
+      mix-blend-mode: overlay;
+    }
+
+    /* ---- Pearl button: soft cream pill with iridescent halo ---- */
+    .pearl-btn {
+      position: relative;
+      isolation: isolate;
+      color: #1a1a1a;
+      background:
+        linear-gradient(180deg, #ffffff 0%, #f5efe8 55%, #ece4dc 100%);
+      border-radius: 9999px;
+      box-shadow:
+        inset 0 1.5px 0 rgba(255,255,255,0.95),
+        inset 0 -1px 0 rgba(0,0,0,0.05),
+        0 1px 1px rgba(255,255,255,0.5),
+        0 10px 22px -8px rgba(0,0,0,0.45),
+        0 2px 4px rgba(0,0,0,0.25);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .pearl-btn::before {
+      /* iridescent halo behind */
+      content: "";
+      position: absolute;
+      inset: -8px;
+      border-radius: inherit;
+      background: conic-gradient(
+        from 140deg,
+        rgba(120, 200, 255, 0.65) 0%,
+        rgba(180, 160, 255, 0.55) 18%,
+        rgba(255, 180, 220, 0.65) 40%,
+        rgba(255, 210, 170, 0.6)  60%,
+        rgba(190, 240, 220, 0.55) 80%,
+        rgba(120, 200, 255, 0.65) 100%
+      );
+      filter: blur(14px);
+      opacity: 0.85;
+      z-index: -2;
+      pointer-events: none;
+    }
+    .pearl-btn::after {
+      /* inner top sheen */
+      content: "";
+      position: absolute;
+      left: 6%;
+      right: 6%;
+      top: 3px;
+      height: 35%;
+      border-radius: 9999px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0));
+      opacity: 0.55;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .pearl-btn > * { position: relative; z-index: 1; }
+    .pearl-btn:hover { transform: translateY(-1px); }
+    .pearl-btn:active { transform: translateY(0); box-shadow:
+        inset 0 1.5px 0 rgba(255,255,255,0.7),
+        inset 0 -1px 0 rgba(0,0,0,0.06),
+        0 4px 10px -4px rgba(0,0,0,0.45),
+        0 1px 2px rgba(0,0,0,0.25); }
+
+    .pearl-btn-sm {
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.95),
+        inset 0 -1px 0 rgba(0,0,0,0.05),
+        0 1px 1px rgba(255,255,255,0.5),
+        0 6px 14px -5px rgba(0,0,0,0.45),
+        0 1px 2px rgba(0,0,0,0.22);
+    }
+    .pearl-btn-sm::before { inset: -5px; filter: blur(9px); opacity: 0.75; }
+
+    /* Ghost variant for inactive mode tabs / secondary actions */
+    .pearl-ghost {
+      position: relative;
+      color: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.03);
+      border-radius: 9999px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+      transition: color .2s, background .2s, box-shadow .2s;
+    }
+    .pearl-ghost:hover {
+      color: #fff;
+      background: rgba(255,255,255,0.06);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.16);
+    }
+
+    /* ============================================================
+       TWEAK: VOICE — heading typographic personality
+       ============================================================ */
+    /* Editorial (default) — Georgia italic, already set in .font-heading */
+
+    body[data-voice="geometric"] .font-heading {
+      font-family: "Space Grotesk", "Inter", sans-serif;
+      font-style: normal;
+      font-weight: 500;
+      letter-spacing: -0.04em;
+    }
+    /* slightly tighter line-height feels right for upright display */
+    body[data-voice="geometric"] h1.font-heading,
+    body[data-voice="geometric"] h2.font-heading {
+      letter-spacing: -0.05em;
+    }
+
+    body[data-voice="mono"] .font-heading {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-style: normal;
+      font-weight: 500;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+    }
+    /* mono reads better with shorter line measure */
+    body[data-voice="mono"] h1.font-heading { letter-spacing: -0.06em; }
+    body[data-voice="mono"] .font-heading.italic { font-style: normal; }
+
+    /* ============================================================
+       TWEAK: HALO — iridescent button glow palette
+       ============================================================ */
+    /* iridescent (default) baked into .pearl-btn::before */
+
+    body[data-halo="sunset"] .pearl-btn::before {
+      background: conic-gradient(
+        from 200deg,
+        rgba(255, 170, 120, 0.75) 0%,
+        rgba(255, 110, 140, 0.75) 25%,
+        rgba(220, 100, 200, 0.7)  50%,
+        rgba(255, 180, 130, 0.7)  75%,
+        rgba(255, 170, 120, 0.75) 100%
+      );
+    }
+    body[data-halo="aurora"] .pearl-btn::before {
+      background: conic-gradient(
+        from 90deg,
+        rgba(100, 255, 200, 0.7) 0%,
+        rgba(100, 200, 255, 0.7) 25%,
+        rgba(160, 130, 255, 0.7) 50%,
+        rgba(120, 255, 180, 0.65) 75%,
+        rgba(100, 255, 200, 0.7) 100%
+      );
+    }
+    body[data-halo="mono"] .pearl-btn::before {
+      background: radial-gradient(
+        circle at 50% 50%,
+        rgba(255,255,255,0.55) 0%,
+        rgba(255,255,255,0.25) 40%,
+        rgba(255,255,255,0) 70%
+      );
+      filter: blur(10px);
+    }
+
+    /* ============================================================
+       TWEAK: MOOD — atmospheric tone of background media
+       ============================================================ */
+    /* cosmos (default) — neutral, video at original tone */
+
+    body[data-mood="twilight"] video {
+      filter: saturate(0.95) hue-rotate(-22deg) brightness(0.9) contrast(1.05);
+    }
+    body[data-mood="twilight"] section::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 40%, rgba(255,140,170,0.18), rgba(60,20,80,0.35) 70%, rgba(10,0,20,0.55) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    body[data-mood="eclipse"] video {
+      filter: saturate(0.2) brightness(0.4) contrast(1.2);
+    }
+    body[data-mood="eclipse"] section::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.35), rgba(0,0,0,0.85) 90%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Make sure content stays above the mood overlay */
+    body[data-mood] section > .relative.z-10,
+    body[data-mood] section > nav { z-index: 10; }
+
+    /* ============================================================
+       TWEAKS PANEL
+       ============================================================ */
+    .tweaks-panel {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      width: 280px;
+      background: rgba(15,15,17,0.78);
+      backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      border-radius: 22px;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.08) inset,
+        0 30px 60px -20px rgba(0,0,0,0.8),
+        0 0 0 1px rgba(255,255,255,0.06);
+      z-index: 60;
+      color: #fff;
+      font-family: var(--font-body);
+      animation: panelIn .3s ease-out;
+    }
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .tweaks-panel header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .tweaks-panel header h4 {
+      font-family: var(--font-heading);
+      font-style: italic;
+      font-size: 18px;
+      letter-spacing: -0.01em;
+    }
+    .tweaks-panel header button {
+      width: 24px; height: 24px;
+      border-radius: 999px;
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.5);
+      transition: color .2s, background .2s;
+    }
+    .tweaks-panel header button:hover {
+      color: #fff;
+      background: rgba(255,255,255,0.08);
+    }
+    .tweaks-panel .section { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .tweaks-panel .section:last-child { border-bottom: none; }
+    .tweaks-panel .label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 10px;
+      display: flex; align-items: baseline; justify-content: space-between;
+    }
+    .tweaks-panel .label .hint {
+      letter-spacing: 0;
+      text-transform: none;
+      font-weight: 400;
+      font-style: italic;
+      font-family: var(--font-heading);
+      color: rgba(255,255,255,0.55);
+      font-size: 12px;
+    }
+    .tweaks-panel .seg {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 3px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+    }
+    .tweaks-panel .seg.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .tweaks-panel .seg button {
+      padding: 7px 4px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: rgba(255,255,255,0.6);
+      transition: color .2s, background .2s, box-shadow .2s;
+    }
+    .tweaks-panel .seg button[aria-pressed="true"] {
+      background: linear-gradient(180deg,#fff,#ece4dc);
+      color: #111;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 4px 10px -4px rgba(0,0,0,0.5);
+    }
+    .tweaks-panel .seg button:hover:not([aria-pressed="true"]) { color: #fff; }
+
+    .tweaks-fab {
+      position: fixed;
+      bottom: 1.25rem;
+      right: 1.25rem;
+      z-index: 60;
+    }
+  }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ---------- Icons (inline minimal Lucide) ---------- */
+const Icon = ({ d, fill = "none", size = 20, className = "", strokeWidth = 2 }) =>
+<svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+fill={fill} stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+className={className}>{d}</svg>;
+
+const IconPlay = (p) => <Icon {...p} fill="currentColor" d={<polygon points="6 3 20 12 6 21 6 3" />} />;
+const IconPause = (p) => <Icon {...p} fill="currentColor" d={<><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></>} />;
+const IconReset = (p) => <Icon {...p} d={<><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></>} />;
+const IconSkip = (p) => <Icon {...p} d={<><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></>} />;
+const IconClock = (p) => <Icon {...p} d={<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15 14" /></>} />;
+const IconTarget = (p) => <Icon {...p} d={<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></>} />;
+const IconList = (p) => <Icon {...p} d={<><line x1="9" y1="6" x2="20" y2="6" /><line x1="9" y1="12" x2="20" y2="12" /><line x1="9" y1="18" x2="20" y2="18" /><circle cx="5" cy="6" r="1" /><circle cx="5" cy="12" r="1" /><circle cx="5" cy="18" r="1" /></>} />;
+const IconArrow = (p) => <Icon {...p} d={<><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></>} />;
+
+/* ---------- FadingVideo ---------- */
+function FadingVideo({ src, className, style }) {
+  const ref = useRef(null);
+  const fadingOut = useRef(false);
+  const raf = useRef(null);
+
+  const fadeTo = (target, duration) => {
+    if (!ref.current) return;
+    if (raf.current) cancelAnimationFrame(raf.current);
+    const start = parseFloat(ref.current.style.opacity || "0");
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min((now - t0) / duration, 1);
+      if (ref.current) {
+        ref.current.style.opacity = (start + (target - start) * p).toString();
+        if (p < 1) raf.current = requestAnimationFrame(step);
+      }
+    };
+    raf.current = requestAnimationFrame(step);
+  };
+
+  useEffect(() => {
+    const v = ref.current;if (!v) return;
+    const FADE = 500,LEAD = 0.55;
+    const onLoaded = () => {v.style.opacity = "0";v.play().catch(() => {});fadeTo(1, FADE);};
+    const onTU = () => {
+      if (!fadingOut.current && v.duration - v.currentTime <= LEAD && v.duration > 0) {
+        fadingOut.current = true;fadeTo(0, FADE);
+      }
+    };
+    const onEnd = () => {
+      v.style.opacity = "0";
+      setTimeout(() => {v.currentTime = 0;v.play().catch(() => {});fadingOut.current = false;fadeTo(1, FADE);}, 100);
+    };
+    v.addEventListener("loadeddata", onLoaded);
+    v.addEventListener("timeupdate", onTU);
+    v.addEventListener("ended", onEnd);
+    return () => {
+      v.removeEventListener("loadeddata", onLoaded);
+      v.removeEventListener("timeupdate", onTU);
+      v.removeEventListener("ended", onEnd);
+      if (raf.current) cancelAnimationFrame(raf.current);
+    };
+  }, [src]);
+
+  return <video ref={ref} src={src} className={className} style={{ ...style, opacity: 0 }} muted playsInline autoPlay />;
+}
+
+/* ---------- Cursor lighting ---------- */
+function useCursorLighting() {
+  useEffect(() => {
+    // Skip on touch-only devices
+    if (!matchMedia("(hover: hover)").matches) return;
+
+    let raf = null;
+    let tx = -1000, ty = -1000;
+    const root = document.documentElement;
+
+    const onMove = (e) => {
+      tx = e.clientX; ty = e.clientY;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        root.style.setProperty("--cx", tx + "px");
+        root.style.setProperty("--cy", ty + "px");
+        // Per-element local coords for .aura
+        const els = document.querySelectorAll(".aura");
+        els.forEach((el) => {
+          const r = el.getBoundingClientRect();
+          if (
+            tx >= r.left - 60 && tx <= r.right + 60 &&
+            ty >= r.top  - 60 && ty <= r.bottom + 60
+          ) {
+            el.style.setProperty("--mx", (tx - r.left) + "px");
+            el.style.setProperty("--my", (ty - r.top)  + "px");
+          }
+        });
+      });
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+}
+
+/* ---------- Pomodoro logic ---------- */
+const DURATIONS = { focus: 25 * 60, short: 5 * 60, long: 20 * 60 };
+const STORAGE_KEY = "pomo_v4_react";
+
+function usePomoLogic() {
+  const [mode, setMode] = useState("focus");
+  const [timeLeft, setTimeLeft] = useState(DURATIONS.focus);
+  const [isRunning, setIsRunning] = useState(false);
+  const [cycle, setCycle] = useState(0);
+  const [activity, setActivity] = useState("");
+  const [stats, setStats] = useState(() => {
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      return s ? JSON.parse(s) : { total: 0, focusMin: 0, days: {}, acts: {} };
+    } catch {return { total: 0, focusMin: 0, days: {}, acts: {} };}
+  });
+  const timer = useRef(null);
+
+  const saveStats = useCallback((ns) => {setStats(ns);localStorage.setItem(STORAGE_KEY, JSON.stringify(ns));}, []);
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+
+  const playChime = useCallback(() => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AC();
+      const master = ctx.createGain();master.gain.value = 0.22;master.connect(ctx.destination);
+      [523.25, 659.25, 783.99, 987.77].forEach((f, i) => {
+        const osc = ctx.createOscillator(),gain = ctx.createGain();
+        const t = ctx.currentTime + i * 0.32;
+        osc.type = "sine";osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(1, t + 0.04);
+        gain.gain.setValueAtTime(1, t + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+        osc.connect(gain);gain.connect(master);
+        osc.start(t);osc.stop(t + 2.2);
+      });
+    } catch {}
+  }, []);
+
+  const record = useCallback(() => {
+    const today = todayKey();
+    const name = activity.trim() || "Sin nombre";
+    const ns = {
+      ...stats,
+      total: stats.total + 1,
+      focusMin: stats.focusMin + 25,
+      days: { ...stats.days, [today]: (stats.days[today] || 0) + 1 },
+      acts: { ...stats.acts, [name]: (stats.acts[name] || 0) + 1 }
+    };
+    saveStats(ns);
+  }, [activity, stats, saveStats]);
+
+  const switchMode = useCallback((nm, reset = true) => {
+    setMode(nm);
+    if (reset) {setTimeLeft(DURATIONS[nm]);setIsRunning(false);}
+  }, []);
+
+  const phaseEnd = useCallback(() => {
+    setIsRunning(false);
+    playChime();
+    if (mode === "focus") {
+      const next = cycle + 1;
+      setCycle(next);
+      record();
+      if (next >= 4) {setCycle(0);switchMode("long");} else
+      switchMode("short");
+    } else switchMode("focus");
+  }, [mode, cycle, record, switchMode, playChime]);
+
+  useEffect(() => {
+    if (isRunning) {
+      timer.current = setInterval(() => {
+        setTimeLeft((p) => {if (p <= 1) {clearInterval(timer.current);return 0;}return p - 1;});
+      }, 1000);
+    } else if (timer.current) clearInterval(timer.current);
+    return () => {if (timer.current) clearInterval(timer.current);};
+  }, [isRunning]);
+
+  useEffect(() => {if (timeLeft === 0 && isRunning) phaseEnd();}, [timeLeft, isRunning, phaseEnd]);
+
+  return {
+    mode, timeLeft, isRunning, cycle, activity, setActivity, stats,
+    toggleTimer: () => setIsRunning((v) => !v),
+    resetTimer: () => {setIsRunning(false);setTimeLeft(DURATIONS[mode]);},
+    skipPhase: () => {setIsRunning(false);const n = mode === "focus" ? cycle >= 3 ? "long" : "short" : "focus";switchMode(n);},
+    switchMode,
+    clearStats: () => saveStats({ total: 0, focusMin: 0, days: {}, acts: {} })
+  };
+}
+
+/* ---------- Tweaks: defaults + hook + panel ---------- */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "voice": "geometric",
+  "halo": "iridescent",
+  "mood": "cosmos"
+}/*EDITMODE-END*/;
+
+function useTweaks(defaults) {
+  const [tweaks, setTweaks] = useState(defaults);
+
+  // Apply to body as data-attributes (CSS does the heavy lifting)
+  useEffect(() => {
+    Object.entries(tweaks).forEach(([k, v]) => {
+      document.body.setAttribute(`data-${k}`, String(v));
+    });
+  }, [tweaks]);
+
+  const setTweak = (k, v) => {
+    setTweaks(prev => {
+      const next = { ...prev, [k]: v };
+      try {
+        window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [k]: v } }, "*");
+      } catch {}
+      return next;
+    });
+  };
+  return [tweaks, setTweak];
+}
+
+function TweaksPanel({ tweaks, setTweak, onClose }) {
+  const Seg = ({ k, options, cols }) => (
+    <div className={`seg ${cols === 4 ? "cols-4" : ""}`}>
+      {options.map(o => (
+        <button
+          key={o.id}
+          aria-pressed={tweaks[k] === o.id}
+          onClick={() => setTweak(k, o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const hints = {
+    voice:  { editorial: "Georgia italic", geometric: "Tight grotesk", mono: "Plex Mono, caps" }[tweaks.voice],
+    halo:   { iridescent: "Rainbow shimmer", sunset: "Warm pink/peach", aurora: "Cool green/blue", mono: "Silver shine" }[tweaks.halo],
+    mood:   { cosmos: "Neutral footage", twilight: "Pink dusk haze", eclipse: "Near black, quiet" }[tweaks.mood],
+  };
+
+  return (
+    <div className="tweaks-panel">
+      <header>
+        <h4>Tweaks</h4>
+        <button onClick={onClose} aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
+      </header>
+
+      <div className="section">
+        <div className="label"><span>Voice</span><span className="hint">{hints.voice}</span></div>
+        <Seg k="voice" options={[
+          { id: "editorial", label: "Editorial" },
+          { id: "geometric", label: "Modern" },
+          { id: "mono",      label: "Mono" },
+        ]} />
+      </div>
+
+      <div className="section">
+        <div className="label"><span>Halo</span><span className="hint">{hints.halo}</span></div>
+        <Seg k="halo" cols={4} options={[
+          { id: "iridescent", label: "Iris" },
+          { id: "sunset",     label: "Sunset" },
+          { id: "aurora",     label: "Aurora" },
+          { id: "mono",       label: "Silver" },
+        ]} />
+      </div>
+
+      <div className="section">
+        <div className="label"><span>Mood</span><span className="hint">{hints.mood}</span></div>
+        <Seg k="mood" options={[
+          { id: "cosmos",   label: "Cosmos" },
+          { id: "twilight", label: "Twilight" },
+          { id: "eclipse",  label: "Eclipse" },
+        ]} />
+      </div>
+    </div>
+  );
+}
+
+/* ---------- App ---------- */
+function App() {
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [panelOpen, setPanelOpen] = useState(false);
+
+  // Edit-mode protocol — listen FIRST, then announce availability
+  useEffect(() => {
+    const onMsg = (e) => {
+      const t = e.data?.type;
+      if (t === "__activate_edit_mode")   setPanelOpen(true);
+      if (t === "__deactivate_edit_mode") setPanelOpen(false);
+    };
+    window.addEventListener("message", onMsg);
+    try { window.parent.postMessage({ type: "__edit_mode_available" }, "*"); } catch {}
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  const closePanel = () => {
+    setPanelOpen(false);
+    try { window.parent.postMessage({ type: "__edit_mode_dismissed" }, "*"); } catch {}
+  };
+
+  useCursorLighting();
+  const {
+    mode, timeLeft, isRunning, cycle, activity, setActivity, stats,
+    toggleTimer, resetTimer, skipPhase, switchMode, clearStats
+  } = usePomoLogic();
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+
+  const modeLabel = { focus: "ENFOQUE", short: "PAUSA CORTA", long: "PAUSA LARGA" }[mode];
+  const modeHint = { focus: "Mantén la atención en una sola tarea", short: "Respira y descansa la vista", long: "Levántate y desconecta un poco" }[mode];
+
+  return (
+    <div className="relative min-h-screen">
+      <div className="cursor-spotlight" aria-hidden="true"></div>
+      <div className="cursor-dot" aria-hidden="true"></div>
+      {/* SECTION 1: HERO + TIMER */}
+      <section className="relative min-h-screen bg-black overflow-hidden flex flex-col">
+        <FadingVideo
+          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4"
+          className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top z-0"
+          style={{ width: "120%", height: "120%", opacity: 0.6 }} />
+        
+        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70 z-0 pointer-events-none" />
+
+        {/* Navbar */}
+        <nav className="fixed top-4 left-0 right-0 px-4 sm:px-8 lg:px-16 z-50 flex items-center justify-between gap-4">
+          <div className="w-12 h-12 liquid-glass rounded-full flex items-center justify-center font-heading text-2xl" style={{ fontSize: "20px" }}>R.S
+
+          </div>
+          <div className="hidden md:flex items-center gap-1.5 p-1.5 liquid-glass rounded-full">
+            {[
+            { id: "timer", label: "Temporizador" },
+            { id: "stats", label: "Estadísticas" },
+            { id: "method", label: "Método" }].
+            map((link) =>
+            <a key={link.id} href={`#${link.id}`}
+            className="px-3 py-2 text-sm font-medium text-white/80 hover:text-white transition-colors">
+                {link.label}
+              </a>
+            )}
+          </div>
+          <a href="#timer" className="pearl-btn aura px-5 py-2.5 text-sm font-medium flex items-center gap-2 whitespace-nowrap">
+            Empezar <IconArrow size={16} />
+          </a>
+        </nav>
+
+        {/* Hero / Timer */}
+        <div id="timer" className="relative z-10 flex-1 flex flex-col items-center justify-center pt-28 pb-12 px-4 text-center">
+          <div className="liquid-glass rounded-full p-1 pl-1 flex items-center gap-3 pr-3 mb-6 anim-blur-in" style={{ animationDelay: "0.2s" }}>
+            <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider ${isRunning ? "bg-white text-black" : "bg-white/15 text-white"}`}>
+              {isRunning ? "EN CURSO" : "EN PAUSA"}
+            </span>
+            <span className="text-xs text-white/80 uppercase tracking-widest">Ciclo {Math.min(cycle + (mode === "focus" ? 1 : 0), 4)} de 4 · {modeLabel}</span>
+          </div>
+
+          <h1 className="font-heading italic text-white leading-[0.85] tracking-[-0.04em] mb-8 anim-blur-in max-w-[15ch] mx-auto"
+          style={{ animationDelay: "0.3s", fontSize: "clamp(2.25rem, 6.5vw, 4.5rem)", textWrap: "balance" }}>
+            Un tomate, una tarea, sin distracciones.
+          </h1>
+
+          {/* TIMER CORE */}
+          <div className="relative mb-8 anim-blur-in w-full" style={{ animationDelay: "0.5s" }}>
+            <div
+              className="font-heading italic text-white leading-none flex items-center justify-center tabular-nums"
+              style={{
+                filter: "drop-shadow(0 0 30px rgba(255,255,255,0.25))",
+                fontSize: "clamp(5rem, 22vw, 10rem)",
+                letterSpacing: "-0.05em"
+              }}>
+              
+              {minutes.toString().padStart(2, "0")}
+              <span className="opacity-30 mx-1 sm:mx-2">:</span>
+              {seconds.toString().padStart(2, "0")}
+            </div>
+            <p className="text-[11px] sm:text-sm font-light opacity-60 tracking-[0.3em] uppercase mt-4 mb-6 px-4">{modeHint}</p>
+
+            <div className="flex items-center justify-center gap-2 sm:gap-3 mt-4 flex-wrap px-2">
+              {[
+              { id: "focus", label: "Enfoque" },
+              { id: "short", label: "Pausa" },
+              { id: "long", label: "Descanso" }].
+              map((m) =>
+              <button
+                key={m.id}
+                onClick={() => switchMode(m.id)}
+                className={`px-5 py-2 text-xs font-semibold uppercase tracking-widest transition-all ${
+                mode === m.id ? "pearl-btn pearl-btn-sm aura" : "pearl-ghost aura"}`
+                }>
+                
+                  {m.label}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="flex flex-col items-center gap-8 w-full anim-blur-in" style={{ animationDelay: "0.8s" }}>
+            <div className="flex items-center gap-4 sm:gap-6 flex-wrap justify-center">
+              <button
+                onClick={toggleTimer}
+                className="pearl-btn aura px-10 sm:px-14 py-4 text-sm font-semibold tracking-[0.2em] flex items-center gap-3 uppercase">
+                
+                {isRunning ? <>Pausar <IconPause size={16} /></> : <>Iniciar <IconPlay size={16} /></>}
+              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={resetTimer} title="Reiniciar" className="pearl-btn pearl-btn-sm aura w-12 h-12 flex items-center justify-center">
+                  <IconReset size={18} />
+                </button>
+                <button onClick={skipPhase} title="Siguiente fase" className="pearl-btn pearl-btn-sm aura w-12 h-12 flex items-center justify-center">
+                  <IconSkip size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="w-full max-w-sm px-4">
+              <input
+                value={activity}
+                onChange={(e) => setActivity(e.target.value)}
+                placeholder="¿En qué estás trabajando?"
+                maxLength={60}
+                className="w-full bg-transparent border-b border-white/20 py-2 text-center text-base sm:text-lg font-light focus:border-white focus:outline-none transition-colors placeholder:text-white/30" />
+              
+              <div className="flex justify-center gap-2 mt-5">
+                {[0, 1, 2, 3].map((i) =>
+                <div key={i}
+                className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${i < cycle ? "bg-white scale-125 shadow-[0_0_8px_white]" : "bg-white/20"}`} />
+                )}
+              </div>
+              <p className="text-[10px] uppercase tracking-[0.3em] text-white/30 mt-3 text-center">
+                {cycle}/4 ciclos completados
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 2: STATS */}
+      <section id="stats" className="relative min-h-screen bg-black overflow-hidden py-24 sm:py-32 px-6 sm:px-8 md:px-16 lg:px-24">
+        <FadingVideo
+          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_094631_d30ab262-45ee-4b7d-99f3-5d5848c8ef13.mp4"
+          className="absolute inset-0 w-full h-full object-cover z-0"
+          style={{ opacity: 0.5 }} />
+        
+        <div className="absolute inset-0 bg-black/40 z-0 pointer-events-none" />
+
+        <div className="relative z-10 max-w-7xl mx-auto">
+          <header className="mb-12 sm:mb-16">
+            <span className="text-xs sm:text-sm font-light uppercase tracking-[0.3em] text-white/50 block mb-4">ESTADÍSTICAS</span>
+            <h2 className="font-heading italic text-white leading-[0.9] tracking-[-0.03em]"
+            style={{ fontSize: "clamp(2rem, 6vw, 4.5rem)", textWrap: "balance" }}>
+              Tu progreso, <br /> sesión a sesión
+            </h2>
+          </header>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8" style={{ fontWeight: "200", fontSize: "14px" }}>
+            {/* CARD 1: TOTALS */}
+            <div className="liquid-glass aura rounded-[2rem] p-6 sm:p-8 flex flex-col min-h-[380px]">
+              <div className="flex items-start justify-between mb-6 gap-3" style={{ fontSize: "14px", letterSpacing: "1px" }}>
+                <div className="w-11 h-11 liquid-glass rounded-xl flex items-center justify-center text-white shrink-0">
+                  <IconTarget size={20} />
+                </div>
+                <span className="liquid-glass rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/70" style={{ padding: "4px 12px" }}>
+                  Acumulado
+                </span>
+              </div>
+
+              <div className="flex-1 flex flex-col justify-center gap-6">
+                <div>
+                  <div className="font-heading italic leading-none tracking-tight tabular-nums"
+                  style={{ fontSize: "clamp(2.75rem, 5vw, 3.75rem)" }}>
+                    {stats.total}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/40 font-bold mt-2">Pomodoros completados</div>
+                </div>
+                <div>
+                  <div className="font-heading italic leading-none tracking-tight tabular-nums"
+                  style={{ fontSize: "clamp(2.75rem, 5vw, 3.75rem)" }}>
+                    {stats.focusMin}
+                  </div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/40 font-bold mt-2">Minutos de enfoque</div>
+                </div>
+              </div>
+
+              <div className="mt-auto pt-6 border-t border-white/5">
+                <h3 className="font-heading italic text-xl sm:text-2xl mb-1.5">Resumen</h3>
+                <p className="text-[13px] font-light text-white/50 leading-relaxed max-w-[32ch]" style={{ textAlign: "center", fontSize: "14px" }}>
+                  Total acumulado de sesiones de enfoque y tiempo dedicado.
+                </p>
+              </div>
+            </div>
+
+            {/* CARD 2: WEEKLY CHART */}
+            <div className="liquid-glass aura rounded-[2rem] p-6 sm:p-8 flex flex-col min-h-[380px]">
+              <div className="flex items-start justify-between mb-6 gap-3">
+                <div className="w-11 h-11 liquid-glass rounded-xl flex items-center justify-center text-white shrink-0">
+                  <IconClock size={20} />
+                </div>
+                <button
+                  onClick={() => {if (confirm("¿Borrar todas las estadísticas?")) clearStats();}}
+                  className="pearl-ghost aura px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ fontFamily: "Inter" }}>
+                  
+                  Borrar datos
+                </button>
+              </div>
+
+              <div className="flex-1 group">
+                <div className="h-56 sm:h-64 flex items-end justify-between gap-2 px-1 sm:px-2 mt-4">
+                  {(() => {
+                    const days = [];
+                    const maxVal = Math.max(...Object.values(stats.days), 1);
+                    for (let i = 6; i >= 0; i--) {
+                      const d = new Date();d.setDate(d.getDate() - i);
+                      const key = d.toISOString().slice(0, 10);
+                      const val = stats.days[key] || 0;
+                      const label = d.toLocaleDateString("es-ES", { weekday: "short" }).slice(0, 1).toUpperCase();
+                      days.push({ val, label, key });
+                    }
+                    return days.map((d, i) =>
+                    <div key={d.key} className="flex-1 flex flex-col items-center gap-2 sm:gap-3 h-full justify-end">
+                        <div className="text-[10px] font-mono opacity-0 group-hover:opacity-80 transition-opacity tabular-nums">{d.val}</div>
+                        <div
+                        className="w-full min-h-[4px] liquid-glass-strong rounded-full bg-white/20"
+                        style={{
+                          height: `${d.val / maxVal * 100}%`,
+                          transition: "height 0.8s ease-out",
+                          transitionDelay: `${i * 0.08}s`
+                        }} />
+                      
+                        <span className="text-[10px] font-bold opacity-50">{d.label}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="mt-auto pt-6 border-t border-white/5">
+                <h3 className="font-heading italic text-xl sm:text-2xl mb-1.5">Esta semana</h3>
+                <p className="text-[13px] font-light text-white/50 leading-relaxed max-w-[32ch]" style={{ textAlign: "center" }}>
+                  Pomodoros completados día a día en los últimos 7 días.
+                </p>
+              </div>
+            </div>
+
+            {/* CARD 3: ACTIVITIES */}
+            <div className="liquid-glass aura rounded-[2rem] p-6 sm:p-8 flex flex-col min-h-[380px]" style={{ height: "520px", width: "300px" }}>
+              <div className="flex items-start justify-between mb-6 gap-3">
+                <div className="w-11 h-11 liquid-glass rounded-xl flex items-center justify-center text-white shrink-0">
+                  <IconList size={20} />
+                </div>
+                <span className="liquid-glass rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                  Top 5
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-4 mt-2 scrollbar-hide pr-1">
+                {Object.entries(stats.acts).
+                sort((a, b) => b[1] - a[1]).
+                slice(0, 5).
+                map(([name, count]) => {
+                  const maxV = Math.max(...Object.values(stats.acts), 1);
+                  return (
+                    <div key={name} className="space-y-1.5">
+                        <div className="flex justify-between items-baseline gap-3">
+                          <span className="font-heading italic text-sm sm:text-base truncate min-w-0 flex-1 opacity-90">{name}</span>
+                          <span className="tabular-nums opacity-50 text-[10px] uppercase tracking-widest shrink-0">
+                            {count} {count === 1 ? "sesión" : "sesiones"}
+                          </span>
+                        </div>
+                        <div className="h-1 liquid-glass rounded-full overflow-hidden">
+                          <div
+                          className="h-full bg-white/50"
+                          style={{ width: `${count / maxV * 100}%`, transition: "width 0.8s ease-out" }} />
+                        
+                        </div>
+                      </div>);
+
+                })}
+                {Object.keys(stats.acts).length === 0 &&
+                <div className="h-full flex items-center justify-center text-[13px] font-light text-white/30 italic text-center px-4">
+                    Aún no has registrado ninguna tarea.
+                  </div>
+                }
+              </div>
+
+              <div className="mt-auto pt-6 border-t border-white/5">
+                <h3 className="font-heading italic text-xl sm:text-2xl mb-1.5">Tareas</h3>
+                <p className="text-[13px] font-light text-white/50 leading-relaxed max-w-[32ch]" style={{ textAlign: "center" }}>
+                  En qué has invertido más pomodoros.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 3: METHOD */}
+      <section id="method" className="relative bg-black py-24 sm:py-32 px-6 sm:px-8 md:px-16 lg:px-24 border-t border-white/5">
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <span className="text-xs sm:text-sm font-light uppercase tracking-[0.3em] text-white/50 block mb-4 sm:mb-6">// El método</span>
+          <h2 className="font-heading italic text-white leading-[0.85] tracking-[-0.03em] mb-12 sm:mb-16"
+          style={{ fontSize: "clamp(2.5rem, 7vw, 5rem)", textWrap: "balance" }}>
+            Cuatro pasos, un ciclo.
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+            {[
+            { n: "01", t: "Elige una tarea", d: "Define qué vas a hacer en los próximos 25 minutos. Una sola cosa." },
+            { n: "02", t: "Enfócate 25 min", d: "Trabaja sin interrupciones hasta que suene la alarma." },
+            { n: "03", t: "Descansa 5 min", d: "Levántate, respira, mira a lo lejos. Deja la pantalla." },
+            { n: "04", t: "Repite 4 veces", d: "Tras 4 pomodoros, tómate una pausa larga de 20 minutos." }].
+            map((s) =>
+            <div key={s.n} className="liquid-glass aura rounded-[1.5rem] p-6 sm:p-8 flex gap-5">
+                <div className="font-heading italic text-3xl sm:text-4xl text-white/40 leading-none shrink-0">{s.n}</div>
+                <div className="min-w-0">
+                  <h3 className="font-heading italic text-xl sm:text-2xl mb-2 text-white">{s.t}</h3>
+                  <p className="text-sm font-light text-white/60 leading-relaxed">{s.d}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-black py-10 px-8 border-t border-white/5 text-center">
+        <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-white/25">
+          Pomodoro · {new Date().getFullYear()} | Rodrigo Serna
+        </p>
+      </footer>
+
+      {panelOpen && <TweaksPanel tweaks={tweaks} setTweak={setTweak} onClose={closePanel} />}
+    </div>);
+
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
